@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+  <meta charset="utf-8" />
+
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <title>Get User Location (HTML + JS)</title>
+
+  <style>
+
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+    body { margin: 2rem; line-height: 1.5; }
+
+    button { padding: .6rem 1rem; border: 0; border-radius: .6rem; cursor: pointer; }
+
+    button.primary { background: #0d6efd; color: white; }
+
+    button.ghost { background: #eee; }
+
+    .row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+
+    .card { padding: 1rem; border: 1px solid #ddd; border-radius: .8rem; }
+
+    code { background: #f6f6f6; padding: .2rem .4rem; border-radius: .3rem; }
+
+    .muted { color: #666; }
+
+  </style>
+
+</head>
+
+<body>
+
+  <h1>Get User Location</h1>
+
+  <div class="row">
+
+    <button id="get" class="primary">Get current location</button>
+
+    <button id="watch" class="ghost">Start live tracking</button>
+
+    <button id="clear" class="ghost">Clear</button>
+
+  </div>
+
+  <div id="status" class="muted">Status: idle</div>
+
+  <div id="output" class="card" style="display:none;">
+
+    <div><strong>Latitude:</strong> <span id="lat">—</span></div>
+
+    <div><strong>Longitude:</strong> <span id="lng">—</span></div>
+
+    <div><strong>Accuracy:</strong> <span id="acc">—</span> meters</div>
+
+    <div><strong>Altitude:</strong> <span id="alt">—</span></div>
+
+    <div><strong>Heading:</strong> <span id="head">—</span></div>
+
+    <div><strong>Speed:</strong> <span id="spd">—</span></div>
+
+    <div><strong>Timestamp:</strong> <span id="time">—</span></div>
+
+    <div style="margin-top:.75rem;">
+
+      <a id="gmaps" href="#" target="_blank" rel="noopener">Open in Google Maps</a> •
+
+      <a id="osm" href="#" target="_blank" rel="noopener">Open in OpenStreetMap</a>
+
+    </div>
+
+  </div>
+
+  <script>
+
+    const statusEl = document.getElementById('status');
+
+    const out = {
+
+      box: document.getElementById('output'),
+
+      lat: document.getElementById('lat'),
+
+      lng: document.getElementById('lng'),
+
+      acc: document.getElementById('acc'),
+
+      alt: document.getElementById('alt'),
+
+      head: document.getElementById('head'),
+
+      spd: document.getElementById('spd'),
+
+      time: document.getElementById('time'),
+
+      gmaps: document.getElementById('gmaps'),
+
+      osm: document.getElementById('osm')
+
+    };
+
+    const opts = {
+
+      enableHighAccuracy: true, // use GPS if available
+
+      timeout: 15000,           // give up after 15s
+
+      maximumAge: 0             // do not use cached position
+
+    };
+
+    let watchId = null;
+
+    function setStatus(msg) { statusEl.textContent = `Status: ${msg}`; }
+
+    function fmt(n, digits = 6) { return (n == null) ? '—' : Number(n).toFixed(digits); }
+
+    function updateUI(position) {
+
+      const { latitude, longitude, accuracy, altitude, heading, speed } = position.coords;
+
+      out.lat.textContent = fmt(latitude);
+
+      out.lng.textContent = fmt(longitude);
+
+      out.acc.textContent = accuracy != null ? Math.round(accuracy) : '—';
+
+      out.alt.textContent = altitude != null ? `${Math.round(altitude)} m` : '—';
+
+      out.head.textContent = (Number.isFinite(heading)) ? `${Math.round(heading)}°` : '—';
+
+      out.spd.textContent = (Number.isFinite(speed)) ? `${(speed * 3.6).toFixed(1)} km/h` : '—';
+
+      out.time.textContent = new Date(position.timestamp).toLocaleString();
+
+      const g = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+      const o = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=18/${latitude}/${longitude}`;
+
+      out.gmaps.href = g;
+
+      out.osm.href = o;
+
+      out.box.style.display = 'block';
+
+    }
+
+    function handleError(err) {
+
+      console.error(err);
+
+      const codes = {
+
+        1: 'Permission denied. Please allow location access.',
+
+        2: 'Position unavailable. Try moving to an open area.',
+
+        3: 'Location request timed out.'
+
+      };
+
+      setStatus(codes[err.code] || `Error: ${err.message || err}`);
+
+      if (err.code === 1) alert('Location permission was denied. Enable it in your browser/site settings to use this feature.');
+
+    }
+
+    function getPositionOnce() {
+
+      if (!('geolocation' in navigator)) {
+
+        setStatus('Geolocation is not supported by this browser.');
+
+        return;
+
+      }
+
+      setStatus('Requesting current position…');
+
+      navigator.geolocation.getCurrentPosition(
+
+        pos => { setStatus('Position retrieved.'); updateUI(pos); },
+
+        handleError,
+
+        opts
+
+      );
+
+    }
+
+    function toggleWatch() {
+
+      if (!('geolocation' in navigator)) {
+
+        setStatus('Geolocation is not supported by this browser.');
+
+        return;
+
+      }
+
+      if (watchId == null) {
+
+        setStatus('Starting live tracking…');
+
+        watchId = navigator.geolocation.watchPosition(
+
+          pos => { setStatus('Tracking…'); updateUI(pos); },
+
+          err => { handleError(err); stopWatch(); },
+
+          opts
+
+        );
+
+        document.getElementById('watch').textContent = 'Stop live tracking';
+
+        document.getElementById('watch').className = 'primary';
+
+      } else {
+
+        stopWatch();
+
+      }
+
+    }
+
+    function stopWatch() {
+
+      if (watchId != null) {
+
+        navigator.geolocation.clearWatch(watchId);
+
+        watchId = null;
+
+        setStatus('Live tracking stopped.');
+
+        const btn = document.getElementById('watch');
+
+        btn.textContent = 'Start live tracking';
+
+        btn.className = 'ghost';
+
+      }
+
+    }
+
+    document.getElementById('get').addEventListener('click', getPositionOnce);
+
+    document.getElementById('watch').addEventListener('click', toggleWatch);
+
+    document.getElementById('clear').addEventListener('click', () => {
+
+      stopWatch();
+
+      out.box.style.display = 'none';
+
+      setStatus('Cleared.');
+
+    });
+
+    // Optional: auto-request once on load
+
+    // getPositionOnce();
+
+  </script>
+
+  <!-- Notes:
+
+    • Must be served over HTTPS (or http://localhost) for geolocation to work.
+
+    • User will be prompted for permission. Accuracy depends on device/signal.
+
+  -->
+
+</body>
+
+</html>
